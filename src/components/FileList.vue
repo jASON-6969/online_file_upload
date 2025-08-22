@@ -1,5 +1,17 @@
 <template>
   <div class="w-full max-w-4xl mx-auto">
+    <!-- 图片预览组件 -->
+    <ImagePreview
+      :is-visible="previewVisible"
+      :image-url="previewImage.url"
+      :image-name="previewImage.name"
+      :image-size="previewImage.size"
+      :images="imageFiles"
+      :current-index="previewIndex"
+      @close="closePreview"
+      @navigate="navigatePreview"
+    />
+    
     <div class="bg-white rounded-lg shadow-sm border">
       <div class="px-6 py-4 border-b border-gray-200">
         <h3 class="text-lg font-medium text-gray-900">已上傳的檔案</h3>
@@ -33,25 +45,34 @@
                 </div>
               </div>
               
-              <!-- 文件信息 -->
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center space-x-2">
-                  <button
-                    @click="downloadFile(file)"
-                    class="text-sm font-medium text-blue-600 hover:text-blue-800 truncate"
-                    :title="file.name"
-                  >
-                    {{ getDisplayName(file.name) }}
-                  </button>
-                  <span v-if="file.size" class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {{ formatFileSize(file.size) }}
-                  </span>
-                </div>
-                <div class="flex items-center space-x-4 text-xs text-gray-500 mt-1">
-                  <span>{{ formatFileType(file.type) }}</span>
-                  <span>{{ formatDate(file.created_at) }}</span>
-                </div>
-              </div>
+                             <!-- 文件信息 -->
+               <div class="flex-1 min-w-0">
+                 <div class="flex items-center space-x-2">
+                   <button
+                     @click="handleFileClick(file)"
+                     class="text-sm font-medium text-blue-600 hover:text-blue-800 truncate"
+                     :title="file.name"
+                   >
+                     {{ getDisplayName(file.name) }}
+                   </button>
+                   <span v-if="file.size" class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                     {{ formatFileSize(file.size) }}
+                   </span>
+                   <!-- 图片预览按钮 -->
+                   <button
+                     v-if="isImageFile(file.type)"
+                     @click="openImagePreview(file)"
+                     class="text-xs text-green-600 hover:text-green-800 hover:bg-green-50 px-2 py-1 rounded transition-colors"
+                     title="預覽圖片"
+                   >
+                     👁️ 預覽
+                   </button>
+                 </div>
+                 <div class="flex items-center space-x-4 text-xs text-gray-500 mt-1">
+                   <span>{{ formatFileType(file.type) }}</span>
+                   <span>{{ formatDate(file.created_at) }}</span>
+                 </div>
+               </div>
             </div>
             
             <!-- 操作按钮 -->
@@ -77,8 +98,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { getFiles, deleteFile as deleteFileFromSupabase } from '../lib/supabase'
+import ImagePreview from './ImagePreview.vue'
 
 const props = defineProps({
   refreshTrigger: {
@@ -89,6 +111,20 @@ const props = defineProps({
 
 const files = ref([])
 const loading = ref(false)
+
+// 图片预览相关状态
+const previewVisible = ref(false)
+const previewIndex = ref(0)
+const previewImage = ref({
+  url: '',
+  name: '',
+  size: ''
+})
+
+// 计算图片文件列表
+const imageFiles = computed(() => {
+  return files.value.filter(file => isImageFile(file.type))
+})
 
   // 獲取檔案列表
 const fetchFiles = async () => {
@@ -126,17 +162,63 @@ const deleteFile = async (file) => {
   }
 }
 
-  // 下載檔案
-const downloadFile = (file) => {
-  if (file.url) {
-    const link = document.createElement('a')
-    link.href = file.url
-    link.download = getDisplayName(file.name)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    // 下載檔案
+  const downloadFile = (file) => {
+    if (file.url) {
+      const link = document.createElement('a')
+      link.href = file.url
+      link.download = getDisplayName(file.name)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
   }
-}
+
+  // 处理文件点击
+  const handleFileClick = (file) => {
+    if (isImageFile(file.type)) {
+      openImagePreview(file)
+    } else {
+      downloadFile(file)
+    }
+  }
+
+  // 检查是否为图片文件
+  const isImageFile = (type) => {
+    return type && type.startsWith('image/')
+  }
+
+  // 预览图片
+  const openImagePreview = (file) => {
+    const imageIndex = imageFiles.value.findIndex(img => img.id === file.id)
+    if (imageIndex !== -1) {
+      previewIndex.value = imageIndex
+      previewImage.value = {
+        url: file.url,
+        name: getDisplayName(file.name),
+        size: formatFileSize(file.size)
+      }
+      previewVisible.value = true
+    }
+  }
+
+  // 关闭预览
+  const closePreview = () => {
+    previewVisible.value = false
+  }
+
+  // 导航预览
+  const navigatePreview = (index) => {
+    previewIndex.value = index
+    const file = imageFiles.value[index]
+    if (file) {
+      previewImage.value = {
+        url: file.url,
+        name: getDisplayName(file.name),
+        size: formatFileSize(file.size)
+      }
+    }
+  }
 
   // 獲取檔案圖標
 const getFileIcon = (type) => {
