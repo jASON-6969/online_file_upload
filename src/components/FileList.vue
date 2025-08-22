@@ -75,13 +75,14 @@
                </div>
             </div>
             
-            <!-- 操作按钮 -->
-            <div class="flex items-center space-x-2">
-                             <button
+                         <!-- 操作按钮 -->
+             <div class="flex items-center space-x-2">
+               <button
                  @click="downloadFile(file)"
-                 class="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                 :disabled="downloadingFiles.has(file.id)"
+                 class="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                >
-                 下載
+                 {{ downloadingFiles.has(file.id) ? '下載中...' : '下載' }}
                </button>
                <button
                  @click="deleteFile(file)"
@@ -89,7 +90,7 @@
                >
                  刪除
                </button>
-            </div>
+             </div>
           </div>
         </div>
       </div>
@@ -120,6 +121,9 @@ const previewImage = ref({
   name: '',
   size: ''
 })
+
+// 下载状态管理
+const downloadingFiles = ref(new Set())
 
 // 计算图片文件列表
 const imageFiles = computed(() => {
@@ -163,14 +167,61 @@ const deleteFile = async (file) => {
 }
 
     // 下載檔案
-  const downloadFile = (file) => {
-    if (file.url) {
+  const downloadFile = async (file) => {
+    if (!file.url || downloadingFiles.value.has(file.id)) return
+    
+    // 设置下载状态
+    downloadingFiles.value.add(file.id)
+    
+    try {
+      // 方法1: 使用 fetch 下载文件 (推荐)
+      const response = await fetch(file.url)
+      if (!response.ok) throw new Error('下載失敗')
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      
+      // 创建下载链接
       const link = document.createElement('a')
-      link.href = file.url
+      link.href = url
       link.download = getDisplayName(file.name)
+      link.style.display = 'none'
+      
+      // 添加到页面并触发下载
       document.body.appendChild(link)
       link.click()
+      
+      // 清理
       document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+    } catch (error) {
+      console.error('下載錯誤:', error)
+      
+      try {
+        // 方法2: 使用 iframe 强制下载
+        forceDownload(file.url, getDisplayName(file.name))
+      } catch (iframeError) {
+        console.error('iframe 下載失敗:', iframeError)
+        
+        // 方法3: 最后的备用方案 - 直接打开链接
+        const link = document.createElement('a')
+        link.href = file.url
+        link.download = getDisplayName(file.name)
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        
+        // 添加特殊属性强制下载
+        link.setAttribute('download', getDisplayName(file.name))
+        link.setAttribute('type', 'application/octet-stream')
+        
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
+    } finally {
+      // 清除下载状态
+      downloadingFiles.value.delete(file.id)
     }
   }
 
@@ -279,7 +330,21 @@ onMounted(() => {
   fetchFiles()
 })
 
-  // 監聽props變化
-import { watch } from 'vue'
-watch(() => props.refreshTrigger, watchRefreshTrigger)
+    // 監聽props變化
+  import { watch } from 'vue'
+  watch(() => props.refreshTrigger, watchRefreshTrigger)
+
+  // 强制下载文件的工具函数
+  const forceDownload = (url, filename) => {
+    // 创建隐藏的 iframe 来触发下载
+    const iframe = document.createElement('iframe')
+    iframe.style.display = 'none'
+    iframe.src = url
+    document.body.appendChild(iframe)
+    
+    // 3秒后移除 iframe
+    setTimeout(() => {
+      document.body.removeChild(iframe)
+    }, 3000)
+  }
 </script>
